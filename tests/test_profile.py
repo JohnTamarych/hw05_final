@@ -50,3 +50,4 @@ class TestProfileView:
             'Проверьте, что передали статьи автора в контекст страницы `/<username>/` типа `Page`'
         assert len(page_context.object_list) == 0, \
             'Проверьте, что правильные статьи автора в контекст страницы `/<username>/`'
+
