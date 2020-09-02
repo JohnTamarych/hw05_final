@@ -1,6 +1,5 @@
-import time
-
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
 
@@ -27,10 +26,12 @@ class ProfileTest(TestCase):
         )
 
     def test_create_profile(self):
+        cache.clear()
         response = self.client.get(reverse('profile', kwargs={'username': self.user_is_login.username}))
         self.assertEqual(response.status_code, 200)
 
     def test_create_post(self):
+        cache.clear()
         text = 'mmm testing'
         response = self.client.post(
             reverse('new_post'),
@@ -44,6 +45,7 @@ class ProfileTest(TestCase):
         self.assertEqual(post_count.count(), 1)
 
     def test_login_redirect(self):
+        cache.clear()
         text = 'mmm testing'
         response = self.client_test.post(
             reverse('new_post'),
@@ -54,6 +56,7 @@ class ProfileTest(TestCase):
         self.assertEqual(Post.objects.count(), 0)
 
     def check_post(self, url, text, author, group):
+        cache.clear()
         response = self.client.get(url)
         if response.context.get('paginator') is None:
             post = response.context.get('post')
@@ -66,6 +69,7 @@ class ProfileTest(TestCase):
         self.assertEqual(post.group, group)
 
     def test_published_post(self):
+        cache.clear()
         text = 'mmm testing'
         post = Post.objects.create(
             text=text,
@@ -85,6 +89,7 @@ class ProfileTest(TestCase):
             self.check_post(url, text, self.user_is_login, self.group)
 
     def test_edit(self):
+        cache.clear()
         text = 'mmm testing'
         post = Post.objects.create(
             text='111',
@@ -111,7 +116,6 @@ class ProfileTest(TestCase):
             self.check_post(url, text, self.user_is_login, self.group)
 
     def test_cash(self):
-        cache.clear()
         post_one = Post.objects.create(
             text='111',
             author=self.user_is_login,
@@ -119,7 +123,11 @@ class ProfileTest(TestCase):
             )
         response = self.client.get(reverse('index'))
         self.assertContains(response, post_one.text)
-        
+        post = response.context.get('post')
+        self.assertEqual(post.text, post_one.text)
+        self.assertEqual(post.author, post_one.author)
+        self.assertEqual(post.group, post_one.group)
+
         post_two = Post.objects.create(
             text='222',
             author=self.user_is_login,
@@ -131,7 +139,8 @@ class ProfileTest(TestCase):
         response = self.client.get(reverse('index'))
         self.assertContains(response, post_two.text)
 
-    def test_follow_and_unfollow(self):
+    def test_follow(self):
+        cache.clear()
         author = User.objects.create(
             username='dude',
             password='123'
@@ -140,13 +149,19 @@ class ProfileTest(TestCase):
         sub_count = Follow.objects.filter(user=self.user_is_login, author=author).count()
         self.assertEqual(sub_count, 1)
         self.assertEqual(Follow.objects.count(), 1)
-        
+
+    def test_unfollow(self):
+        cache.clear()
+        author = User.objects.create(
+            username='dude',
+            password='123'
+        )
+        self.client.get(reverse('profile_follow', args=[author]))
         self.client.get(reverse('profile_unfollow', args=[author]))
-        sub_count = Follow.objects.filter(user=self.user_is_login, author=author).count()
-        self.assertEqual(sub_count, 0)
         self.assertEqual(Follow.objects.count(), 0)
 
-    def test_new_follow_post(self):
+    def test_new_follow_post_appear(self):
+        cache.clear()
         author = User.objects.create(
             username='dude',
             password='123'
@@ -157,39 +172,68 @@ class ProfileTest(TestCase):
             author=author,
             group=self.group
         )
-        response = self.client.get(reverse('follow_index'))
-        self.assertContains(response, post.text)
+        url = reverse('follow_index')
+        self.check_post(url, post.text, author, self.group)
+
+    def test_new_unfollow_post_not_appear(self):
         cache.clear()
+        author = User.objects.create(
+            username='dude',
+            password='123'
+        )
+        self.client.get(reverse('profile_follow', args=[author]))
+        Post.objects.create(
+            text='111',
+            author=author,
+            group=self.group
+        )
         self.client_test.force_login(self.user_not_login)
         response = self.client_test.get(reverse('follow_index'))
-        self.assertNotContains(response, post.text)
-    
+        post_context = response.context.get('post')
+        self.assertEqual(post_context, None)
+
     def test_auth_comment(self):
+        cache.clear()
         comment_text = 'testcomment'
         post = Post.objects.create(
             text='111',
             author=self.user_is_login,
             group=self.group
         )
-        
+
         response = self.client.post(
             reverse('add_comment', args=[self.user_is_login, post.id]),
             {'text': comment_text},
             follow=True
             )
         self.assertContains(response, comment_text)
-        comments = Comment.objects.filter(text=comment_text)
+        comments = Comment.objects.filter(text=comment_text, author=self.user_is_login, post=post)
         self.assertEqual(comments.count(), 1)
 
+    def test_not_auth_comment(self):
+        cache.clear()
         another_text = 'anothercomment'
+        post = Post.objects.create(
+            text='111',
+            author=self.user_is_login,
+            group=self.group
+        )
         response = self.client_test.post(
             reverse('add_comment', args=[self.user_is_login, post.id]),
             {'text': another_text},
             follow=True
             )
-        self.assertNotContains(response, comment_text)
-        comments = Comment.objects.filter(text=another_text)
+        self.assertNotContains(response, another_text)
+        comments = Comment.objects.filter(text=another_text, author=self.user_is_login, post=post)
         self.assertEqual(comments.count(), 0)
+
+    def test_return_404(self):
+        response = self.client.get('0000001/')
+        self.assertEqual(response.status_code, 404)
+
+    def tearDown(self):
+        self.user_is_login.delete()
+        self.user_not_login.delete()
 
 
 class ImageTest(TestCase):
@@ -208,22 +252,20 @@ class ImageTest(TestCase):
             description='testing'
         )
 
-    def test_return_404(self):
-        response = self.client.get('0000001/')
-        self.assertEqual(response.status_code, 404)
-
     def test_image(self):
+        small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x00\x00\x00\x21\xf9\x04'
+            b'\x01\x0a\x00\x01\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02'
+            b'\x02\x4c\x01\x00\x3b'
+            )
+        img = SimpleUploadedFile('small.gif', small_gif, content_type='image/gif')
         text = 'mmm testing'
         post_one = Post.objects.create(
             text=text,
             author=self.user_is_login,
-            group=self.group
+            group=self.group,
+            image=img
         )
-        with open('posts/file.jpg', 'rb') as img:
-            post = self.client.post(
-                reverse('post_edit', kwargs={'username': self.user_is_login, 'post_id': post_one.id}),
-                {'author': self.user_is_login, 'text': 'post with image', 'image': img}
-                )
         urls = [
             reverse('index'),
             reverse('profile', kwargs={'username': self.user_is_login}),
@@ -231,22 +273,38 @@ class ImageTest(TestCase):
                 'post',
                 kwargs={'username': self.user_is_login, 'post_id': post_one.id}
             ),
+            reverse('group', kwargs={'slug': self.group.slug}),
         ]
         for url in urls:
-            response = self.client.get(url)
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, 'img')
-            self.assertEqual(Post.objects.count(), 1)
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, '<img')
+                self.assertEqual(Post.objects.count(), 1)
 
     def test_not_img(self):
+        test_file = SimpleUploadedFile(
+            name='file.txt',
+            content=b'file contents',
+            content_type='text/plain'
+            )
         text = 'mmm testing'
         post_one = Post.objects.create(
             text=text,
             author=self.user_is_login,
-            group=self.group
+            group=self.group,
             )
-        with open('posts/admin.py', 'rb') as img:
-            post = self.client.post(
-                reverse('post_edit', kwargs={'username': self.user_is_login, 'post_id': post_one.id}),
-                {'author': self.user_is_login, 'text': 'post with image', 'image': img}
-                )
+        response = self.client.post(
+                reverse('post_edit', args=[self.user_is_login, post_one.id]),
+                {'author': self.user_is_login, 'text': text, 'image': test_file}
+            )
+        self.assertFormError(
+            response,
+            'form',
+            'image',
+            'Загрузите правильное изображение. Файл, который вы загрузили, поврежден или не является изображением.'
+            )
+
+    def tearDown(self):
+        self.user_is_login.delete()
+        self.user_not_login.delete()

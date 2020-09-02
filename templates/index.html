@@ -1,6 +1,5 @@
 {% extends "base.html" %} 
 {% block title %}Последние обновления{% endblock %}
-{% load cache %}
 {% block content %}
     <div class="container">
 
@@ -8,11 +7,9 @@
 
            <h1>Последние обновления на сайте</h1>
             
-                {% cache 20 index_page %}
                 {% for post in page %}                  
                     {% include "includes/post_item.html" with post=post %}
                 {% endfor %}
-                {% endcache %}
     </div>
 
         

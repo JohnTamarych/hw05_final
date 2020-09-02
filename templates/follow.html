@@ -8,7 +8,7 @@
 
            <h1>Ваша лента</h1>
             
-                {% cache 20 index_page %}
+                {% cache 20 follow_page %}
                 {% for post in page %}                  
                     {% include "includes/post_item.html" with post=post %}
                 {% endfor %}

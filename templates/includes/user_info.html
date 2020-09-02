@@ -15,10 +15,11 @@
                             <ul class="list-group list-group-flush">
                                     <li class="list-group-item">
                                             <div class="h6 text-muted">
-                                            Подписчиков: XXX <br />
-                                            Подписан: XXX
+                                            Подписчиков: {{ post_author.follower.count }} <br />
+                                            Подписан: {{ post_author.following.count }}
                                             </div>
                                     </li>
+                                    {% if post_author != request.user %}
                                     <li class="list-group-item">
                                             <div class="h6 text-muted">
                                                 <!-- Количество записей -->
@@ -38,6 +39,7 @@
                                                     </li>
                                             </div>
                                     </li>
+                                    {% endif %}
                             </ul>
                     </div>
             </div>

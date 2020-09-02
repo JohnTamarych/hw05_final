@@ -29,7 +29,9 @@
                     {% if post.comments.exists %}
                     {{ post.comments.count }} комментариев
                     {% else%}
+                    {% if user == post.author %}
                     Добавить комментарий
+                    {% endif %}
                     {% endif %}
                 </a>
                     
