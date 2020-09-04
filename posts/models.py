@@ -34,7 +34,13 @@ class Post(models.Model):
         blank=True,
         null=True,
     )
-    image = models.ImageField(upload_to='posts/', blank=True, null=True)
+    image = models.ImageField(
+        upload_to='posts/',
+        verbose_name='пикча',
+        help_text='добавь картинку',
+        blank=True,
+        null=True
+        )
 
     class Meta:
         ordering = ['-pub_date']

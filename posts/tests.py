@@ -1,3 +1,5 @@
+import os
+
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
@@ -25,13 +27,13 @@ class ProfileTest(TestCase):
             description='testing'
         )
 
-    def test_create_profile(self):
         cache.clear()
+
+    def test_create_profile(self):
         response = self.client.get(reverse('profile', kwargs={'username': self.user_is_login.username}))
         self.assertEqual(response.status_code, 200)
 
     def test_create_post(self):
-        cache.clear()
         text = 'mmm testing'
         response = self.client.post(
             reverse('new_post'),
@@ -45,7 +47,6 @@ class ProfileTest(TestCase):
         self.assertEqual(post_count.count(), 1)
 
     def test_login_redirect(self):
-        cache.clear()
         text = 'mmm testing'
         response = self.client_test.post(
             reverse('new_post'),
@@ -69,7 +70,6 @@ class ProfileTest(TestCase):
         self.assertEqual(post.group, group)
 
     def test_published_post(self):
-        cache.clear()
         text = 'mmm testing'
         post = Post.objects.create(
             text=text,
@@ -89,7 +89,6 @@ class ProfileTest(TestCase):
             self.check_post(url, text, self.user_is_login, self.group)
 
     def test_edit(self):
-        cache.clear()
         text = 'mmm testing'
         post = Post.objects.create(
             text='111',
@@ -140,7 +139,6 @@ class ProfileTest(TestCase):
         self.assertContains(response, post_two.text)
 
     def test_follow(self):
-        cache.clear()
         author = User.objects.create(
             username='dude',
             password='123'
@@ -151,22 +149,20 @@ class ProfileTest(TestCase):
         self.assertEqual(Follow.objects.count(), 1)
 
     def test_unfollow(self):
-        cache.clear()
         author = User.objects.create(
             username='dude',
             password='123'
         )
-        self.client.get(reverse('profile_follow', args=[author]))
+        Follow.objects.create(user=self.user_is_login, author=author)
         self.client.get(reverse('profile_unfollow', args=[author]))
         self.assertEqual(Follow.objects.count(), 0)
 
     def test_new_follow_post_appear(self):
-        cache.clear()
         author = User.objects.create(
             username='dude',
             password='123'
         )
-        self.client.get(reverse('profile_follow', args=[author]))
+        Follow.objects.create(user=self.user_is_login, author=author)
         post = Post.objects.create(
             text='111',
             author=author,
@@ -176,12 +172,11 @@ class ProfileTest(TestCase):
         self.check_post(url, post.text, author, self.group)
 
     def test_new_unfollow_post_not_appear(self):
-        cache.clear()
         author = User.objects.create(
             username='dude',
             password='123'
         )
-        self.client.get(reverse('profile_follow', args=[author]))
+        Follow.objects.create(user=self.user_is_login, author=author)
         Post.objects.create(
             text='111',
             author=author,
@@ -189,11 +184,10 @@ class ProfileTest(TestCase):
         )
         self.client_test.force_login(self.user_not_login)
         response = self.client_test.get(reverse('follow_index'))
-        post_context = response.context.get('post')
-        self.assertEqual(post_context, None)
+        p = response.context.get('paginator')
+        self.assertEqual(0, p.count)
 
     def test_auth_comment(self):
-        cache.clear()
         comment_text = 'testcomment'
         post = Post.objects.create(
             text='111',
@@ -209,9 +203,10 @@ class ProfileTest(TestCase):
         self.assertContains(response, comment_text)
         comments = Comment.objects.filter(text=comment_text, author=self.user_is_login, post=post)
         self.assertEqual(comments.count(), 1)
+        p = response.context.get('post')
+        self.assertEqual(p.comments.count(), 1)
 
     def test_not_auth_comment(self):
-        cache.clear()
         another_text = 'anothercomment'
         post = Post.objects.create(
             text='111',
@@ -226,14 +221,16 @@ class ProfileTest(TestCase):
         self.assertNotContains(response, another_text)
         comments = Comment.objects.filter(text=another_text, author=self.user_is_login, post=post)
         self.assertEqual(comments.count(), 0)
+        response = self.client_test.get(reverse('post', args=[self.user_is_login, post.id]))
+        p = response.context.get('post')
+        self.assertEqual(p.comments.count(), 0)
 
     def test_return_404(self):
         response = self.client.get('0000001/')
         self.assertEqual(response.status_code, 404)
 
     def tearDown(self):
-        self.user_is_login.delete()
-        self.user_not_login.delete()
+        cache.clear()
 
 
 class ImageTest(TestCase):
@@ -258,7 +255,7 @@ class ImageTest(TestCase):
             b'\x01\x0a\x00\x01\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02'
             b'\x02\x4c\x01\x00\x3b'
             )
-        img = SimpleUploadedFile('small.gif', small_gif, content_type='image/gif')
+        img = SimpleUploadedFile('small.gif', small_gif, content_type='gif')
         text = 'mmm testing'
         post_one = Post.objects.create(
             text=text,
@@ -280,13 +277,12 @@ class ImageTest(TestCase):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, '<img')
-                self.assertEqual(Post.objects.count(), 1)
 
     def test_not_img(self):
         test_file = SimpleUploadedFile(
-            name='file.txt',
+            name='test_file.txt',
             content=b'file contents',
-            content_type='text/plain'
+            content_type='text'
             )
         text = 'mmm testing'
         post_one = Post.objects.create(
@@ -306,5 +302,9 @@ class ImageTest(TestCase):
             )
 
     def tearDown(self):
-        self.user_is_login.delete()
-        self.user_not_login.delete()
+        cache.clear()
+        try:
+            os.remove('media/posts/small.gif')
+            os.remove('media/posts/test_file.txt')
+        except:
+            print('file already deleted')
